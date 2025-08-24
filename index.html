@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Collaborative Editor</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            padding: 10px;
+        }
+
+        #container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 600px;
+        }
+
+        h1, h2 {
+            text-align: center;
+        }
+        
+        input, button {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        input {
+            border: 1px solid #ccc;
+        }
+        
+        button {
+            border: none;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #roleSelector, #joinView {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        #textEditor {
+            width: 100%;
+            height: 250px;
+            margin-top: 10px;
+        }
+
+        #viewerContent {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #e9e9e9;
+            min-height: 250px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #status {
+            margin-top: 15px;
+            text-align: center;
+            font-style: italic;
+            color: #666;
+            min-height: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>Live Collaborative Editor</h1>
+
+        <!-- Step 1: Connection Setup -->
+        <div id="initialView">
+            <!-- The URL input section has been completely removed for a cleaner UI -->
+            <div id="roleSelector">
+                <button id="createBtn">Create New Session</button>
+                <button id="joinBtn">Join Existing Session</button>
+            </div>
+        </div>
+
+        <!-- Step 2: Join Details -->
+        <div id="joinView" class="hidden">
+            <input type="text" id="joinIdInput" placeholder="Enter Session ID">
+            <input type="password" id="joinPwdInput" placeholder="Enter Password (for Editors)">
+            <button id="joinAsEditorBtn">Join as Editor</button>
+            <button id="joinAsViewerBtn">Join as Viewer</button>
+        </div>
+
+        <!-- Editor View -->
+        <div id="editorView" class="hidden">
+            <h2>Editor Mode</h2>
+            <p>ID: <strong id="sessionId"></strong> | Password: <strong id="sessionPwd"></strong></p>
+            <textarea id="textEditor" placeholder="Start typing..."></textarea>
+        </div>
+
+        <!-- Viewer View -->
+        <div id="viewerView" class="hidden">
+            <h2>Viewer Mode</h2>
+            <p>Session ID: <strong id="viewerSessionId"></strong></p>
+            <div id="viewerContent">Waiting for content...</div>
+        </div>
+
+        <div id="status"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // UI Views
+            const initialView = document.getElementById('initialView');
+            const joinView = document.getElementById('joinView');
+            const editorView = document.getElementById('editorView');
+            const viewerView = document.getElementById('viewerView');
+
+            // UI Elements
+            const statusDisplay = document.getElementById('status');
+            const textEditor = document.getElementById('textEditor');
+
+            // Buttons
+            const createBtn = document.getElementById('createBtn');
+            const joinBtn = document.getElementById('joinBtn');
+            const joinAsEditorBtn = document.getElementById('joinAsEditorBtn');
+            const joinAsViewerBtn = document.getElementById('joinAsViewerBtn');
+            
+            // --- DYNAMIC URL CONFIGURATION ---
+            // Determine the correct protocol (ws or wss) and host.
+            // This makes the client automatically adapt to the deployment environment.
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const wsHost = window.location.host; // e.g., "my-collab-app.onrender.com" or "localhost:3000"
+            const wsAddress = `${wsProtocol}://${wsHost}`;
+            
+            // State
+            let ws;
+            let sessionInfo = {};
+            let isUpdatingFromRemote = false;
+
+            // REWRITTEN: This function now uses the dynamically generated address
+            // and no longer reads from an input field.
+            function connectWebSocket(onOpenCallback) {
+                statusDisplay.textContent = `Connecting to server...`;
+                ws = new WebSocket(wsAddress);
+
+                ws.onopen = () => {
+                    statusDisplay.textContent = 'Connection established.';
+                    initialView.classList.add('hidden');
+                    if (onOpenCallback) onOpenCallback();
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const msg = JSON.parse(event.data);
+
+                        if (msg.TYPE === 'DATA') {
+                            sessionInfo = { id: msg.ID, pwd: msg.PWD };
+                            document.getElementById('sessionId').textContent = sessionInfo.id;
+                            document.getElementById('sessionPwd').textContent = sessionInfo.pwd;
+                            editorView.classList.remove('hidden');
+                            statusDisplay.textContent = 'Session created. You are now editing.';
+                        } 
+                        else if (msg.TYPE === 'STATUS') {
+                            if (msg.STATUS === 'OK') {
+                                statusDisplay.textContent = 'Action successful.';
+                            } else {
+                                statusDisplay.textContent = `Error: ${msg.ACK || 'Request failed.'}`;
+                                ws.close();
+                            }
+                        } 
+                        else if (msg.TYPE === 'TEXT') {
+                            const newText = msg.TEXT;
+                            if (!editorView.classList.contains('hidden')) {
+                                updateEditor(newText);
+                            }
+                            if (!viewerView.classList.contains('hidden')) {
+                                document.getElementById('viewerContent').textContent = newText;
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse server message:', event.data, e);
+                        statusDisplay.textContent = 'Received an invalid message from the server.';
+                    }
+                };
+
+                ws.onclose = () => {
+                    statusDisplay.textContent = 'Disconnected from server.';
+                    editorView.classList.add('hidden');
+                    viewerView.classList.add('hidden');
+                    joinView.classList.add('hidden');
+                    initialView.classList.remove('hidden');
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket Error:', error);
+                    statusDisplay.textContent = 'Connection failed. Check if server is running.';
+                };
+            }
+            
+            function updateEditor(newText) {
+                isUpdatingFromRemote = true;
+                const cursorPos = textEditor.selectionStart;
+                textEditor.value = newText;
+                textEditor.selectionEnd = cursorPos;
+                isUpdatingFromRemote = false;
+            }
+
+            // --- Event Listeners (No changes needed here) ---
+
+            createBtn.addEventListener('click', () => {
+                connectWebSocket(() => {
+                    ws.send(JSON.stringify({ TYPE: "CREATE" }));
+                });
+            });
+
+            joinBtn.addEventListener('click', () => {
+                initialView.classList.add('hidden');
+                joinView.classList.remove('hidden');
+            });
+
+            joinAsEditorBtn.addEventListener('click', () => {
+                const id = parseInt(document.getElementById('joinIdInput').value, 10);
+                const pwd = parseInt(document.getElementById('joinPwdInput').value, 10);
+
+                if (!id || !pwd) {
+                    statusDisplay.textContent = 'Both ID and Password are required for editors.';
+                    return;
+                }
+                sessionInfo = { id, pwd };
+                
+                connectWebSocket(() => {
+                    ws.send(JSON.stringify({ TYPE: "JOIN", ID: sessionInfo.id, PWD: sessionInfo.pwd }));
+                    joinView.classList.add('hidden');
+                    document.getElementById('sessionId').textContent = sessionInfo.id;
+                    document.getElementById('sessionPwd').textContent = sessionInfo.pwd;
+                    editorView.classList.remove('hidden');
+                    statusDisplay.textContent = `Joining as editor for session ${sessionInfo.id}...`;
+                });
+            });
+
+            joinAsViewerBtn.addEventListener('click', () => {
+                const id = parseInt(document.getElementById('joinIdInput').value, 10);
+                if (!id) {
+                    statusDisplay.textContent = 'A Session ID is required to view.';
+                    return;
+                }
+                connectWebSocket(() => {
+                    ws.send(JSON.stringify({ TYPE: "JOIN", ID: id }));
+                    joinView.classList.add('hidden');
+                    document.getElementById('viewerSessionId').textContent = id;
+                    viewerView.classList.remove('hidden');
+                    statusDisplay.textContent = `Joined as viewer for session ${id}.`;
+                });
+            });
+
+            textEditor.addEventListener('input', () => {
+                if (isUpdatingFromRemote) {
+                    return;
+                }
+                if (ws && ws.readyState === WebSocket.OPEN && sessionInfo.id && sessionInfo.pwd) {
+                    ws.send(JSON.stringify({
+                        TYPE: "UPDATE",
+                        ID: sessionInfo.id,
+                        PWD: sessionInfo.pwd,
+                        TEXT: textEditor.value
+                    }));
+                }
+            });
+        });
+    </script>
+</body>
+</html>
