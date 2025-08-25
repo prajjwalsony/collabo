@@ -27,16 +27,3 @@ Try it here: https://collabo-pjlq.onrender.com/
 - `package.json` / `package-lock.json` — Project metadata and dependencies.
 
 ---
-
-## Getting Started
-
-### Prerequisites
-- [Node.js](https://nodejs.org/) (v14+) and npm installed.
-
-### Setup & Run
-
-```bash
-git clone https://github.com/prajjwalsony/collabo.git
-cd collabo
-npm install
-npm start
