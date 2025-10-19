@@ -23,7 +23,7 @@ Try it here: https://collabo-pjlq.onrender.com/
 
 - `index.html` — Core interface for session creation and joining.
 - `index.js` — Frontend logic for handling session creation, joining, and real-time updates.
-- `worker.js` — Likely handles synchronization (e.g., via Web Workers or messaging).
+- `worker.js` — Handles synchronization (e.g., via Web Workers or messaging).
 - `package.json` / `package-lock.json` — Project metadata and dependencies.
 
 ---
