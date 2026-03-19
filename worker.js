@@ -1,5 +1,6 @@
 //data section
 const rooms = {}; //this is dictionary of containing {id : reference to room object}
+//added deadspace
 let totalInstances = 0
 const LIMIT = 1000;
 
